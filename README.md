@@ -82,6 +82,12 @@ A lightweight, incremental, checkpointed server health monitor for log directori
 - **Decisions**: Selected comprehensive rules (`E`, `F`, `W`, `I`, `B`, `UP`, `S`, `C4`, `SIM`, `RUF`); ignored `E501` to let formatter manage line wrapping while tolerating long strings/comments; configured per-file ignores for tests (`S101` for asserts, `RUF001` for unicode test data) and scripts (`S603`, `S607` for subprocesses); enforced double-quote style.
 - **Verify**: Executed `ruff check .` (All checks passed!) and `ruff format --check .` (16 files already formatted).
 
+### Step 14: Add workflow skeleton with lint job
+- **What**: Created `.github/workflows/ci.yml` defining the base CI/CD pipeline triggers (`push` and `pull_request` on `main`), concurrency settings, read-only permissions, and initial `lint` stage.
+- **Why**: Automate pull request and merge validation so that code formatting and static analysis are enforced on every contribution.
+- **Decisions**: Configured concurrency cancellation for non-main branches (`cancel-in-progress`); locked baseline workflow permissions to `contents: read`; cached pip dependencies keyed on `pyproject.toml` under Python 3.11; ran both `ruff check .` and `ruff format --check .`.
+- **Verify**: Inspected workflow YAML structure and confirmed local lint and format checks execute with zero findings.
+
 ---
 
 ## Usage Guide & Sample Execution
