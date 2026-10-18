@@ -69,3 +69,53 @@ A lightweight, incremental, checkpointed server health monitor for log directori
 - **Why**: Provide the user-facing CLI interface, structured terminal reporting, single-scan mode (`--once`), continuous polling loop with sliced sleeping, signal handling for graceful shutdown, and standardized process exit codes (0 for success, 1 for runtime failure, 2 for configuration errors).
 - **Decisions**: Sent structured reports strictly to stdout and operational log messages to stderr; sanitized untrusted terminal output against escape sequences and capped display lengths; implemented graceful double-signal handling (first `SIGINT`/`SIGTERM` saves state and stops, second aborts); used 0.5s sleep slices for responsive interrupt handling across platforms.
 - **Verify**: Executed `python -m pytest` running 183 tests across all test suites (182 passed, 1 platform-skipped) and verified `$env:PYTHONPATH='src'; python -m health_monitor --help`.
+
+### Step 12: Add sample logs and usage documentation
+- **What**: Created sample log tree `org/` (`dev/server-1.log`, `dev/server-2.log`, `prd/server-3.log`, `staging/server-5.log`) matching the reference baseline and appended CLI usage documentation.
+- **Why**: Provide realistic sample data for local verification, smoke testing, and onboarding documentation.
+- **Decisions**: Sample files illustrate all state combinations: healthy servers (`dev/server-1.log`), single active fault (`dev/server-2.log`), resolved fault (`prd/server-3.log`), and multi-fault progression where one is resolved and another stays active (`staging/server-5.log`).
+- **Verify**: Executed `python -m health_monitor --root org --state-file state/test-state.json --once` producing 4 discovered servers, 2 in fault (`F001` on `dev/server-2.log`, `F002` on `staging/server-5.log`), and ran `python -m pytest` (182 passed, 1 platform-skipped).
+
+---
+
+## Usage Guide & Sample Execution
+
+### Single-Scan Mode (`--once`)
+
+Executes an immediate one-pass scan across `--root`, saves updated state to `--state-file`, outputs the report to `stdout`, and exits cleanly:
+
+```bash
+python -m health_monitor --root org --state-file state/local-state.json --once
+```
+
+#### Actual Output on Sample Data
+
+```text
+=== Server Health Report ===
+Total servers discovered: 4
+Servers in fault: 2
+
+Affected servers:
+  dev/server-2.log  (1 active fault)
+    - F001 [ERROR] since 2026-10-08 09:02:00: Database unavailable
+  staging/server-5.log  (1 active fault)
+    - F002 [CRIT] since 2026-10-08 09:06:00: Disk failure
+```
+
+### Continuous Monitoring Loop
+
+For continuous monitoring, run without `--once`:
+
+```bash
+health-monitor --root org --state-file state/state.json --interval 15
+```
+
+The daemon responds to `SIGINT` (Ctrl+C) and `SIGTERM` by flushing the latest checkpoint and shutting down cleanly.
+
+### Exit Code Contract
+
+| Exit Code | Classification | Meaning |
+|:---:|---|---|
+| **`0`** | **Success** | Clean exit in `--once` mode or successful shutdown after `SIGINT` / `SIGTERM`. |
+| **`1`** | **Runtime Crash** | Fatal I/O failure, permission barrier, or unhandled exception during scan loop. |
+| **`2`** | **Configuration Error** | Invalid argument, malformed severity, missing root directory, or state file inside root. |
