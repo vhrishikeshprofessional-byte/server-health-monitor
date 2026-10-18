@@ -33,3 +33,9 @@ A lightweight, incremental, checkpointed server health monitor for log directori
 - **Why**: Provide immutable, strongly validated configuration loaded across CLI flags and environment variables with strict precedence and actionable diagnostics.
 - **Decisions**: Implemented precedence: CLI flags > environment variables > defaults; raised custom `ConfigError` rather than calling `sys.exit()` to enable comprehensive unit testing; enforced that the state file path must never reside inside the monitored root directory to prevent self-monitoring loops.
 - **Verify**: Executed `python -m pytest` running 84 tests across `test_config.py` and `test_parser.py` (all passed).
+
+### Step 6: Discover servers and count faults by severity threshold
+- **What**: Created simple initial version of `src/health_monitor/monitor.py`, shared pytest fixtures in `tests/conftest.py`, and basic tests in `tests/test_monitor.py`.
+- **Why**: Deliver a functional core monitor that discovers log files in nested environments, reads file lines, applies configured severity thresholds, and counts active server faults.
+- **Decisions**: Recursively walked root path excluding hidden files/directories (e.g. `.git/`); derived stable fault IDs (`auto-<offset>`) when explicit `[id=...]` is omitted; counted servers at most once regardless of multiple active faults.
+- **Verify**: Executed `python -m pytest` running 93 tests across `test_monitor.py`, `test_config.py`, and `test_parser.py` (all passed).
