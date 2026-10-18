@@ -76,6 +76,12 @@ A lightweight, incremental, checkpointed server health monitor for log directori
 - **Decisions**: Sample files illustrate all state combinations: healthy servers (`dev/server-1.log`), single active fault (`dev/server-2.log`), resolved fault (`prd/server-3.log`), and multi-fault progression where one is resolved and another stays active (`staging/server-5.log`).
 - **Verify**: Executed `python -m health_monitor --root org --state-file state/test-state.json --once` producing 4 discovered servers, 2 in fault (`F001` on `dev/server-2.log`, `F002` on `staging/server-5.log`), and ran `python -m pytest` (182 passed, 1 platform-skipped).
 
+### Step 13: Configure ruff and fix findings
+- **What**: Added `[tool.ruff]`, `[tool.ruff.lint]`, and `[tool.ruff.format]` configurations to `pyproject.toml` and verified all code passes linting and formatting checks.
+- **Why**: Establish automated static analysis, import sorting, code hygiene, and style consistency across the codebase before introducing CI automation.
+- **Decisions**: Selected comprehensive rules (`E`, `F`, `W`, `I`, `B`, `UP`, `S`, `C4`, `SIM`, `RUF`); ignored `E501` to let formatter manage line wrapping while tolerating long strings/comments; configured per-file ignores for tests (`S101` for asserts, `RUF001` for unicode test data) and scripts (`S603`, `S607` for subprocesses); enforced double-quote style.
+- **Verify**: Executed `ruff check .` (All checks passed!) and `ruff format --check .` (16 files already formatted).
+
 ---
 
 ## Usage Guide & Sample Execution
