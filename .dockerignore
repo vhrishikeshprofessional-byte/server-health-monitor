@@ -1,11 +1,10 @@
 # .dockerignore
 # Keep the Docker build context small, reproducible, and secret-free.
 
-# Version control and reference data
+# Version control
 .git/
 .github/
 .gitattributes
-
 
 # Python environments and bytecode
 .venv/
@@ -17,7 +16,6 @@ __pycache__/
 *.egg-info/
 build/
 dist/
-_reference/
 
 # Tooling and caches
 .pytest_cache/

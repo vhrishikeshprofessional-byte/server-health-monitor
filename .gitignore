@@ -10,7 +10,6 @@ __pycache__/
 *.egg-info/
 build/
 dist/
-_reference/
 
 # Tooling output
 .pytest_cache/
