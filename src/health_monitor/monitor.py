@@ -89,21 +89,23 @@ class Monitor:
         return files, errors
 
     def _process_file(self, rel: str, path: str) -> str | None:
+        try:
+            st = os.stat(path)
+        except OSError as exc:
+            return str(exc)
+
         cp = self._state.get(rel)
         if cp is None:
-            try:
-                st = os.stat(path)
-                ino = st.st_ino
-            except OSError:
-                ino = 0
-            cp = FileCheckpoint(relative_path=rel, inode=ino)
+            cp = FileCheckpoint(relative_path=rel, inode=st.st_ino)
             self._state[rel] = cp
 
-        cp.active_faults.clear()
-        cp.seen_fault_ids.clear()
+        if st.st_size == cp.size_seen:
+            return None
+
         try:
             with open(path, "rb") as fh:
-                pos = 0
+                fh.seek(cp.offset)
+                pos = cp.offset
                 for raw in fh:
                     line_start = pos
                     pos += len(raw)
@@ -111,16 +113,28 @@ class Monitor:
                     if event is None or isinstance(event, ParseError):
                         continue
                     self._apply(cp, event, line_start)
+                    cp.offset = pos
+                cp.size_seen = fh.tell()
         except OSError as exc:
             return str(exc)
         return None
 
     def _apply(self, cp: FileCheckpoint, event: LogEvent, line_start: int) -> None:
-        if not event.triggers_fault(self._settings.min_severity):
+        if event.is_resolution:
+            if cp.active_faults.pop(event.fault_id or "", None) is None:
+                logger.info(
+                    "resolution for unknown or inactive fault %r in %r ignored",
+                    event.fault_id,
+                    cp.relative_path,
+                )
             return
+
+        if not event.triggers_fault(self._settings.min_severity):
+            return  # below threshold: ordinary entry, never clears anything
+
         fault_id = event.fault_id or f"auto-{line_start}"
         if fault_id in cp.seen_fault_ids:
-            return
+            return  # duplicate, replay, or reuse of a resolved id: no new fault
         cp.seen_fault_ids.add(fault_id)
         cp.active_faults[fault_id] = Fault(
             fault_id=fault_id,

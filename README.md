@@ -39,3 +39,9 @@ A lightweight, incremental, checkpointed server health monitor for log directori
 - **Why**: Deliver a functional core monitor that discovers log files in nested environments, reads file lines, applies configured severity thresholds, and counts active server faults.
 - **Decisions**: Recursively walked root path excluding hidden files/directories (e.g. `.git/`); derived stable fault IDs (`auto-<offset>`) when explicit `[id=...]` is omitted; counted servers at most once regardless of multiple active faults.
 - **Verify**: Executed `python -m pytest` running 93 tests across `test_monitor.py`, `test_config.py`, and `test_parser.py` (all passed).
+
+### Step 7: Track fault lifecycle and explicit resolution
+- **What**: Updated `src/health_monitor/monitor.py` with fault lifecycle management and created `tests/test_resolution.py`.
+- **Why**: Implement stateful fault tracking where faults remain open until explicitly resolved by an authorized `INFO RESOLVED id=<ID>` entry, preventing duplicate faults and premature closures.
+- **Decisions**: Explicit resolution lines clear only their matching `fault_id` (leaving other active faults open); ordinary `INFO`/`WARN` lines never clear faults; recorded `seen_fault_ids` per file to prevent duplicate fault creation and forbid reopening already-resolved IDs.
+- **Verify**: Executed `python -m pytest` running 105 tests including 12 dedicated lifecycle and resolution tests (all passed).
