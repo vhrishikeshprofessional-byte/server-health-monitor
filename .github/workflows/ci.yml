@@ -70,3 +70,40 @@ jobs:
           name: coverage-report
           path: coverage.xml
           retention-days: 1
+
+  sonar:
+    name: 3. SonarCloud Quality Gate
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository (full git history for blame analysis)
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Download coverage report
+        uses: actions/download-artifact@v7
+        with:
+          name: coverage-report
+
+      - name: Check SonarCloud credentials availability
+        id: check-sonar
+        run: |
+          if [ -z "${{ secrets.SONAR_TOKEN }}" ] || [ -z "${{ vars.SONAR_PROJECT_KEY }}" ] || [ -z "${{ vars.SONAR_ORGANIZATION }}" ]; then
+            echo "::notice ::SonarCloud secrets or repository variables (SONAR_TOKEN, SONAR_PROJECT_KEY, SONAR_ORGANIZATION) not configured. Skipping scan."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run SonarCloud Scan & Enforce Quality Gate
+        if: steps.check-sonar.outputs.enabled == 'true'
+        uses: sonarsource/sonarcloud-github-action@v3
+        with:
+          args: >
+            -Dsonar.projectKey=${{ vars.SONAR_PROJECT_KEY }}
+            -Dsonar.organization=${{ vars.SONAR_ORGANIZATION }}
+            -Dsonar.qualitygate.wait=true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
