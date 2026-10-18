@@ -88,6 +88,12 @@ A lightweight, incremental, checkpointed server health monitor for log directori
 - **Decisions**: Configured concurrency cancellation for non-main branches (`cancel-in-progress`); locked baseline workflow permissions to `contents: read`; cached pip dependencies keyed on `pyproject.toml` under Python 3.11; ran both `ruff check .` and `ruff format --check .`.
 - **Verify**: Inspected workflow YAML structure and confirmed local lint and format checks execute with zero findings.
 
+### Step 15: Add unit test job with coverage gate
+- **What**: Added `[tool.coverage.run]` and `[tool.coverage.report]` sections to `pyproject.toml`, and configured the `test` job in `.github/workflows/ci.yml` with coverage gating and artifact uploading (`coverage.xml`).
+- **Why**: Enforce an automated quality gate verifying unit tests pass and test branch coverage remains at or above 80% on all pull requests and merges.
+- **Decisions**: Configured coverage collection across `health_monitor` package measuring branch coverage, omitting `__main__.py` entrypoint; enforced `--cov-fail-under=80`; configured XML report generation for downstream SonarCloud analysis and artifact upload with 1-day retention.
+- **Verify**: Executed `pytest --cov=health_monitor --cov-report=xml --cov-report=term-missing --cov-fail-under=80` achieving 95.93% total coverage with 182 passing tests.
+
 ---
 
 ## Usage Guide & Sample Execution

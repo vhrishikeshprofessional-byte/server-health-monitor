@@ -33,6 +33,17 @@ testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = "-ra"
 
+[tool.coverage.run]
+source = ["health_monitor"]
+branch = true
+omit = ["*/__main__.py"]
+relative_files = true
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 80
+exclude_also = ["if __name__ == .__main__.:"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"
