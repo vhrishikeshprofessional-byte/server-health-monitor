@@ -124,6 +124,12 @@ A lightweight, incremental, checkpointed server health monitor for log directori
 - **Decisions**: Downloaded and loaded the built `image.tar` artifact; executed Aqua Security Trivy scanner (`aquasec/trivy:latest`) in table format via Docker socket; scanned both OS and library package types (`--pkg-types os,library`); configured build failure (`--exit-code 1`) on any fixable (`--ignore-unfixed`) `HIGH` or `CRITICAL` severity vulnerabilities; established zero-exception policy in `.trivyignore`.
 - **Verify**: Inspected `.trivyignore` and confirmed CI workflow YAML syntax and step sequencing (`needs: smoke`).
 
+### Step 21: Add GHCR publish job with immutable tags
+- **What**: Added `publish` job to `.github/workflows/ci.yml` running on pushes to the `main` branch.
+- **Why**: Deliver production container images to GitHub Container Registry (GHCR) with strict tag immutability and provenance tracking.
+- **Decisions**: Restricted publish execution to `refs/heads/main` pushes; requested `packages: write` permission; authenticated using `GITHUB_TOKEN` via `docker/login-action@v4`; enforced immutability gate by checking `docker manifest inspect` before tagging to prevent overwriting existing commit SHA releases; published immutable commit SHA tag along with `:main` and `:latest` pointers.
+- **Verify**: Inspected workflow YAML structure, conditional triggers (`if: github.event_name == 'push' && github.ref == 'refs/heads/main'`), and job dependencies (`needs: scan`).
+
 ---
 
 ## Usage Guide & Sample Execution

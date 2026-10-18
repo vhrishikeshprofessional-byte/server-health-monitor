@@ -188,3 +188,53 @@ jobs:
             --pkg-types os,library \
             --severity CRITICAL,HIGH \
             "server-health-monitor:${{ github.sha }}"
+
+  publish:
+    name: 7. Publish to GHCR
+    needs: scan
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Download Docker image artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: docker-image
+
+      - name: Load Docker image into daemon
+        run: docker load -i image.tar
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check immutable SHA tag and publish
+        run: |
+          set -euo pipefail
+          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          IMAGE_NAME="ghcr.io/${REPO_LOWER}"
+          SHA_TAG="${IMAGE_NAME}:${{ github.sha }}"
+          MAIN_TAG="${IMAGE_NAME}:main"
+          LATEST_TAG="${IMAGE_NAME}:latest"
+          LOCAL_IMAGE="server-health-monitor:${{ github.sha }}"
+
+          echo "Checking if immutable tag ${SHA_TAG} already exists on GHCR..."
+          if docker manifest inspect "${SHA_TAG}" > /dev/null 2>&1; then
+            echo "::error ::Immutable tag ${SHA_TAG} already exists on GHCR! Overwriting existing releases is forbidden."
+            exit 1
+          fi
+
+          echo "Tagging ${LOCAL_IMAGE} -> ${SHA_TAG}, ${MAIN_TAG}, ${LATEST_TAG}"
+          docker tag "${LOCAL_IMAGE}" "${SHA_TAG}"
+          docker tag "${LOCAL_IMAGE}" "${MAIN_TAG}"
+          docker tag "${LOCAL_IMAGE}" "${LATEST_TAG}"
+
+          echo "Publishing container images to GHCR..."
+          docker push "${SHA_TAG}"
+          docker push "${MAIN_TAG}"
+          docker push "${LATEST_TAG}"
