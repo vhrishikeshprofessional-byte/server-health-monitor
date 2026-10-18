@@ -51,3 +51,21 @@ A lightweight, incremental, checkpointed server health monitor for log directori
 - **Why**: Prevent re-scanning whole log files on every polling cycle, reducing per-scan I/O from $O(\text{total log size})$ to $O(\text{new bytes appended})$.
 - **Decisions**: Maintained `cp.offset` and `cp.size_seen` per file checkpoint; skipped reads when file size matches `size_seen`; held back partial trailing lines without trailing newline until completed on later scans; bounded memory consumption during oversized line draining (up to `MAX_LINE_BYTES`).
 - **Verify**: Executed `python -m pytest` running 111 tests including spy-verified no-op scans for unchanged files, partial line handling, and oversized line skips (all passed).
+
+### Step 9: Handle rotation, truncation and unreadable files
+- **What**: Enhanced `src/health_monitor/monitor.py` and `tests/test_monitor.py` to handle log rotation, file truncation/replacement, unreadable permissions, vanished directories, and symlink skipping.
+- **Why**: Production log systems continuously rotate (logrotate) and truncate logs, and access permissions can change; the monitor must remain resilient without dropping active faults or crashing.
+- **Decisions**: Compared `st_ino` and `st_size` against checkpoint state to detect replacements and truncations, triggering replay from offset 0 while preserving unresolved active faults; unreadable files are flagged (`readable=False`) and kept in error reports rather than falsely reported healthy; missing files retain active faults unless healthy and directories are verified accessible.
+- **Verify**: Executed `python -m pytest` running 120 tests including permission denial, file rotation/replacement, file truncation, and missing file retention (119 passed, 1 platform-skipped for Windows symlinks).
+
+### Step 10: Persist state atomically with crash recovery
+- **What**: Created `src/health_monitor/checkpoint.py` defining `CheckpointStore` and created unit test suite `tests/test_checkpoint.py`.
+- **Why**: Ensure monitoring state, file offsets, active faults, and seen fault IDs are durably and atomically persisted across service restarts and system crashes.
+- **Decisions**: Atomically replaced state via temporary file in the same directory (`flush` + `os.fsync` + `os.replace`); strictly validated schema version 1 and relative POSIX paths to prevent path traversal; quarantined corrupted or invalid state files (`.corrupt-<timestamp>`) while starting fresh to ensure unblocked service availability; avoided disk writes when state is unchanged.
+- **Verify**: Executed `python -m pytest` running 156 tests covering atomic roundtrip, schema validation failures, quarantine renames, crash recovery, and write errors (155 passed, 1 platform-skipped).
+
+### Step 11: Add report output, scan loop and graceful shutdown
+- **What**: Created `src/health_monitor/cli.py`, `src/health_monitor/__main__.py`, added `[project.scripts]` entry `health-monitor` to `pyproject.toml`, and created unit test suite `tests/test_cli.py`.
+- **Why**: Provide the user-facing CLI interface, structured terminal reporting, single-scan mode (`--once`), continuous polling loop with sliced sleeping, signal handling for graceful shutdown, and standardized process exit codes (0 for success, 1 for runtime failure, 2 for configuration errors).
+- **Decisions**: Sent structured reports strictly to stdout and operational log messages to stderr; sanitized untrusted terminal output against escape sequences and capped display lengths; implemented graceful double-signal handling (first `SIGINT`/`SIGTERM` saves state and stops, second aborts); used 0.5s sleep slices for responsive interrupt handling across platforms.
+- **Verify**: Executed `python -m pytest` running 183 tests across all test suites (182 passed, 1 platform-skipped) and verified `$env:PYTHONPATH='src'; python -m health_monitor --help`.

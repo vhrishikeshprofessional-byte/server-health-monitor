@@ -8,27 +8,44 @@
 #   - newly appended entries picked up on the next scan
 #   - unchanged file is not re-read (observable via counters or a spy)
 #   - partial trailing line is held back until its newline arrives
-#   - malformed lines do not stop valid ones
-#   - oversized line handling
+#   - missing / unreadable file reported as error, not as healthy
+#   - symlinks are skipped
 
 """Discovery, counting, thresholds and incremental reading."""
 
+import builtins
 import logging
+import os
+import shutil
 
 import pytest
 
+from health_monitor import monitor as monitor_module
 from health_monitor.models import Severity
 from health_monitor.monitor import MAX_LINE_BYTES, Monitor
 
 INFO_LINE = "2026-10-08 09:00:00 INFO Service started"
 ERR1 = "2026-10-08 09:02:00 ERROR [id=F001] Database unavailable"
 CRIT2 = "2026-10-08 09:06:00 CRIT [id=F002] Disk failure"
+RES1 = "2026-10-08 09:10:00 INFO RESOLVED id=F001"
 ERR9 = "2026-10-08 09:20:00 ERROR [id=F9] Later failure"
 
 
 def fault_ids(report, rel):
     status = next(s for s in report.statuses if s.relative_path == rel)
     return {fault.fault_id for fault in status.active_faults}
+
+
+def deny_open_for(monkeypatch, name):
+    """Make opening any file whose path ends with `name` raise PermissionError."""
+    real_open = builtins.open
+
+    def fake(file, *args, **kwargs):
+        if str(file).endswith(name):
+            raise PermissionError(13, "Permission denied")
+        return real_open(file, *args, **kwargs)
+
+    monkeypatch.setattr(monitor_module, "open", fake, raising=False)
 
 
 # ---------------------------------------------------------------- discovery
@@ -57,6 +74,19 @@ def test_hidden_files_and_directories_are_ignored(make_monitor, write_log):
     write_log("dev/server-1.log", INFO_LINE)
     write_log("dev/.hidden", ERR1)
     write_log(".git/objects.log", ERR1)
+    report = make_monitor().scan_once()
+    assert report.total_servers == 1
+    assert report.faulty_servers == 0
+
+
+def test_symlinks_are_not_followed(make_monitor, write_log, org, tmp_path):
+    write_log("dev/real.log", INFO_LINE)
+    target = tmp_path / "outside.log"
+    target.write_text(ERR1 + "\n")
+    try:
+        os.symlink(target, org / "dev" / "link.log")
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks are not available on this system")
     report = make_monitor().scan_once()
     assert report.total_servers == 1
     assert report.faulty_servers == 0
@@ -187,3 +217,104 @@ def test_incomplete_oversized_line_does_not_advance_offset(make_monitor, write_r
     write_raw("dev/s.log", "\n", append=True)
     write_log("dev/s.log", ERR9, append=True)
     assert fault_ids(monitor.scan_once(), "dev/s.log") == {"F9"}
+
+
+# --------------------------------------------------- unreadable and missing
+def test_unreadable_file_is_counted_but_not_reported_healthy(make_monitor, write_log, monkeypatch):
+    write_log("dev/bad.log", INFO_LINE)
+    deny_open_for(monkeypatch, "bad.log")
+    report = make_monitor().scan_once()
+    status = report.statuses[0]
+    assert report.total_servers == 1
+    assert status.readable is False
+    assert "PermissionError" in report.discovery_errors[0]
+    assert "dev/bad.log" in report.discovery_errors[0]
+
+
+def test_unreadable_file_keeps_previously_known_faults(make_monitor, write_log, monkeypatch):
+    write_log("dev/s.log", ERR1)
+    monitor = make_monitor()
+    monitor.scan_once()
+
+    write_log("dev/s.log", INFO_LINE, append=True)  # size changes -> read attempted
+    deny_open_for(monkeypatch, "s.log")
+    report = monitor.scan_once()
+    assert report.faulty_servers == 1
+    assert report.statuses[0].readable is False
+    assert fault_ids(report, "dev/s.log") == {"F001"}
+
+
+def test_missing_file_with_active_faults_stays_counted(make_monitor, write_log):
+    path = write_log("dev/s.log", ERR1)
+    monitor = make_monitor()
+    monitor.scan_once()
+    path.unlink()
+
+    report = monitor.scan_once()
+    assert report.total_servers == 1
+    assert report.faulty_servers == 1
+    assert report.statuses[0].readable is False
+    assert "missing" in report.statuses[0].error
+    assert any("missing" in e for e in report.discovery_errors)
+
+
+def test_missing_file_without_faults_is_dropped(make_monitor, write_log):
+    path = write_log("dev/s.log", INFO_LINE)
+    monitor = make_monitor()
+    monitor.scan_once()
+    path.unlink()
+
+    report = monitor.scan_once()
+    assert report.total_servers == 0
+    assert report.discovery_errors == ()
+    assert "dev/s.log" not in monitor.state
+
+
+def test_reappearing_file_replays_idempotently(make_monitor, write_log):
+    path = write_log("dev/s.log", ERR1)
+    monitor = make_monitor()
+    monitor.scan_once()
+    path.unlink()
+    monitor.scan_once()
+
+    write_log("dev/s.log", ERR1, RES1)  # file comes back, now with a resolution
+    report = monitor.scan_once()
+    assert report.faulty_servers == 0
+    assert report.total_servers == 1
+
+
+def test_vanished_root_keeps_known_faults_and_does_not_crash(make_monitor, write_log, org):
+    write_log("dev/s.log", ERR1)
+    monitor = make_monitor()
+    monitor.scan_once()
+    shutil.rmtree(org)
+
+    report = monitor.scan_once()
+    assert report.faulty_servers == 1
+    assert any("<root>" in e for e in report.discovery_errors)
+
+
+# ----------------------------------------------- truncation and replacement
+def test_truncated_file_is_reread_and_keeps_unresolved_faults(make_monitor, write_log):
+    write_log("dev/s.log", ERR1)
+    monitor = make_monitor()
+    monitor.scan_once()
+
+    write_log("dev/s.log", "2026-10-08 10:00:00 INFO ok")  # shorter: truncates
+    assert fault_ids(monitor.scan_once(), "dev/s.log") == {"F001"}
+
+    write_log("dev/s.log", RES1, append=True)
+    assert monitor.scan_once().faulty_servers == 0
+
+
+def test_replaced_file_is_reread_without_clearing_faults(make_monitor, write_log, tmp_path):
+    path = write_log("dev/s.log", ERR1)
+    monitor = make_monitor()
+    monitor.scan_once()
+
+    incoming = tmp_path / "incoming.log"
+    incoming.write_bytes((CRIT2 + "\n").encode("utf-8"))
+    os.replace(incoming, path)  # rotation: new file at the same path
+
+    report = monitor.scan_once()
+    assert fault_ids(report, "dev/s.log") == {"F001", "F002"}

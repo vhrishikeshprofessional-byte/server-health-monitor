@@ -22,6 +22,9 @@ dev = [
     "ruff>=0.8,<1",
 ]
 
+[project.scripts]
+health-monitor = "health_monitor.cli:main"
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
