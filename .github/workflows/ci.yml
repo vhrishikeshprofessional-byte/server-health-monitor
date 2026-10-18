@@ -160,3 +160,31 @@ jobs:
 
       - name: Run end-to-end smoke tests
         run: python scripts/smoke_test.py "server-health-monitor:${{ github.sha }}"
+
+  scan:
+    name: 6. Container Vulnerability Scan
+    needs: smoke
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Download Docker image artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: docker-image
+
+      - name: Load Docker image into daemon
+        run: docker load -i image.tar
+
+      - name: Run Trivy Vulnerability Scanner
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:latest image \
+            --format table \
+            --exit-code 1 \
+            --ignore-unfixed \
+            --pkg-types os,library \
+            --severity CRITICAL,HIGH \
+            "server-health-monitor:${{ github.sha }}"

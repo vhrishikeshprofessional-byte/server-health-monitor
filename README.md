@@ -118,6 +118,12 @@ A lightweight, incremental, checkpointed server health monitor for log directori
 - **Decisions**: Built standard-library-only test harness covering 4 scenarios (Scenario A: fault detection, Scenario B: incremental resolution with shared state, Scenario C: exit code 2 for invalid config, Scenario D: non-root UID verification); configured `smoke` job to download and load `image.tar` before executing `smoke_test.py`.
 - **Verify**: Ran `ruff check scripts/smoke_test.py` and `ruff format --check scripts/smoke_test.py` with zero errors.
 
+### Step 20: Add Trivy vulnerability scan job
+- **What**: Created `.trivyignore` exception baseline and added the `scan` job to `.github/workflows/ci.yml`.
+- **Why**: Detect known Common Vulnerabilities and Exposures (CVEs) in base image OS packages and Python dependencies before container images are published.
+- **Decisions**: Downloaded and loaded the built `image.tar` artifact; executed Aqua Security Trivy scanner (`aquasec/trivy:latest`) in table format via Docker socket; scanned both OS and library package types (`--pkg-types os,library`); configured build failure (`--exit-code 1`) on any fixable (`--ignore-unfixed`) `HIGH` or `CRITICAL` severity vulnerabilities; established zero-exception policy in `.trivyignore`.
+- **Verify**: Inspected `.trivyignore` and confirmed CI workflow YAML syntax and step sequencing (`needs: smoke`).
+
 ---
 
 ## Usage Guide & Sample Execution
