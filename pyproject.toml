@@ -1,0 +1,31 @@
+# pyproject.toml
+#
+# RESPONSIBILITY: single place for packaging and tool configuration.
+#
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "server-health-monitor"
+version = "0.1.0"
+description = "Lightweight, incremental, checkpointed server health monitor for log directories."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []  # standard library only: small image, small attack surface
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8,<10",
+    "pytest-cov>=5,<8",
+    "ruff>=0.8,<1",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-ra"
