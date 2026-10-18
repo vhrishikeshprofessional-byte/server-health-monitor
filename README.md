@@ -45,3 +45,9 @@ A lightweight, incremental, checkpointed server health monitor for log directori
 - **Why**: Implement stateful fault tracking where faults remain open until explicitly resolved by an authorized `INFO RESOLVED id=<ID>` entry, preventing duplicate faults and premature closures.
 - **Decisions**: Explicit resolution lines clear only their matching `fault_id` (leaving other active faults open); ordinary `INFO`/`WARN` lines never clear faults; recorded `seen_fault_ids` per file to prevent duplicate fault creation and forbid reopening already-resolved IDs.
 - **Verify**: Executed `python -m pytest` running 105 tests including 12 dedicated lifecycle and resolution tests (all passed).
+
+### Step 8: Read only newly appended bytes incrementally
+- **What**: Added incremental stream reading to `src/health_monitor/monitor.py` with `_iter_complete_lines` and `_read_new_lines`, and added incremental test scenarios to `tests/test_monitor.py`.
+- **Why**: Prevent re-scanning whole log files on every polling cycle, reducing per-scan I/O from $O(\text{total log size})$ to $O(\text{new bytes appended})$.
+- **Decisions**: Maintained `cp.offset` and `cp.size_seen` per file checkpoint; skipped reads when file size matches `size_seen`; held back partial trailing lines without trailing newline until completed on later scans; bounded memory consumption during oversized line draining (up to `MAX_LINE_BYTES`).
+- **Verify**: Executed `python -m pytest` running 111 tests including spy-verified no-op scans for unchanged files, partial line handling, and oversized line skips (all passed).
